@@ -14,7 +14,7 @@ use warnings;
 use OAuth::Lite::Consumer;
 use OAuth::Lite::Token;
 
-use JSON qw/decode_json/;
+use JSON qw/decode_json encode_json/;
 
 use Pod::Usage;
 use Getopt::Long qw/:config posix_default no_ignore_case bundling auto_help/;
@@ -29,6 +29,9 @@ GetOptions(
 
 my $consumer_key;
 my $consumer_secret;
+
+my $json_data;
+
 #filinameが指定されている場合
 if(defined $opts{filename}){
     my $filename = $opts{filename};
@@ -37,10 +40,11 @@ if(defined $opts{filename}){
         local $/ = undef;
         <$fh>;
     };
-    my $data = decode_json($json_in);
+    close $fh;
+    $json_data = decode_json($json_in);
 
-    $consumer_key    = $data->{'consumer_key'};
-    $consumer_secret = $data->{'consumer_secret'};
+    $consumer_key    = $json_data->{'consumer_key'};
+    $consumer_secret = $json_data->{'consumer_secret'};
 }else{
 #指定されていない場合
     $consumer_key    = $opts{key};
@@ -88,10 +92,17 @@ print "verifier:$verifier\n";
 my $access_token = $consumer->get_access_token(
     token       => $request_token,
     verifier    => $verifier,
-    ) or die $consumer->errstr;;
+    ) or die $consumer->errstr;
 
 print "access token:       $access_token->{'token'}\n";
 print "access_token_secret:$access_token->{'secret'}\n";
 
-     
+$json_data->{'access_token'}        = $access_token->{'token'};
+$json_data->{'access_token_secret'} = $access_token->{'secret'};
+
+my $json_out = encode_json($json_data);
+open my $ofh,'>','config.json' or die "$!";
+print $ofh $json_out;
+close $ofh;
+
 
