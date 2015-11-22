@@ -1,72 +1,97 @@
 #!/usr/bin/perl
 
+=head1 NAME
+get zaim OAuth tokens
+=head1 SYNOPSIS
+
+get_zaim_tokens.pl [--filename filename]|[--key consumer_key --secret consumer_secret]
+
+=cut
+
 use strict;
 use warnings;
-use utf8;
 
 use OAuth::Lite::Consumer;
 use OAuth::Lite::Token;
 
-use Data::Dumper;
-use JSON qw/decode_json encode_json/;
+use JSON qw/decode_json/;
 
-my $consumer_key        = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
-my $consumer_secret     = 'YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY';
+use Pod::Usage;
+use Getopt::Long qw/:config posix_default no_ignore_case bundling auto_help/;
 
-my $access_token        = 'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ';
-my $access_token_secret = 'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW';
+GetOptions(
+    \my %opts,qw/
+    filename|f=s
+    key|k=s
+    secret|s=s
+    /) or pod2usage(verbose => 0);
 
-my $api_url             = q{https://api.zaim.net/v2};
+
+my $consumer_key;
+my $consumer_secret;
+#filinameが指定されている場合
+if(defined $opts{filename}){
+    my $filename = $opts{filename};
+    open my $fh,'<',$filename or die "$!";
+    my $json_in = do{
+        local $/ = undef;
+        <$fh>;
+    };
+    my $data = decode_json($json_in);
+
+    $consumer_key    = $data->{'consumer_key'};
+    $consumer_secret = $data->{'consumer_secret'};
+}else{
+#指定されていない場合
+    $consumer_key    = $opts{key};
+    $consumer_secret = $opts{secret};
+    if(!defined $consumer_key || !defined $consumer_secret){
+        print STDERR "input correct consume key or consumer secret";
+        exit;
+    }
+}
+
+
+#print "$consumer_key\n";
+#print "$consumer_secret\n";
 
 my $consumer = OAuth::Lite::Consumer->new(
-    consumer_key    => $consumer_key,
-    consumer_secret => $consumer_secret,
+    consumer_key          => $consumer_key,
+    consumer_secret       => $consumer_secret,
+    site                  => q{https://api.zaim.net},
+    request_token_path    => q{https://api.zaim.net/v2/auth/request},
+    access_token_path     => q{https://api.zaim.net/v2/auth/access},
+    authorize_path        => q{https://www.zaim.net/users/auth},
     );
 
-my $token = OAuth::Lite::Token->new(
-    token  => $access_token,
-    secret => $access_token_secret,
+my $request_token = $consumer->get_request_token(
+    callback_url => 'http://google.com/' #適当なURLを入れておく
+    ) or die $consumer->errstr."\n";
+
+     
+#print "request token:$request_token\n;";
+
+my $url = $consumer->url_to_authorize(
+    token   => $request_token,
     );
 
 
+print "$url\n";
+print "上記URLにアクセス後、Verifierを入力してください:\n";
 
-#認証できているか確認
+my $verifier = <STDIN>;
+$verifier =~ s/\x0D?\x0A$//g; #cygwinの場合
+#chomp $verifier             #cygwin以外
 
-my $url = "$api_url".q{/home/user/verify};
+print "verifier:$verifier\n";
 
-#print $url;
+my $access_token = $consumer->get_access_token(
+    token       => $request_token,
+    verifier    => $verifier,
+    ) or die $consumer->errstr;;
 
-my $res = $consumer->request(
-    method => 'GET',
-    url    => $url,
-    token  => $token,
-    );
+print "access token:       $access_token->{'token'}\n";
+print "access_token_secret:$access_token->{'secret'}\n";
 
-#print Dumper $res->decoded_content;
-
-#print Dumper decode_json($res->decoded_content);
-
-
-#カテゴリを取得
-$url = "$api_url".q{/home/category};
-
-$res = $consumer->request(
-    method => 'GET',
-    url    => $url,
-    token  => $token,
-    );
-
-print Dumper decode_json($res->decoded_content);
-
-#input dataを取得する
-$url = "$api_url".q{/home/money};
-
-$res = $consumer->request(
-    method => 'GET',
-    url    => $url,
-    params => {'mapping' => 1,'limit' => 100},
-    token => $token,
-    );
-
-print Dumper decode_json($res->decoded_content);
+     
 
